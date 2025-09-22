@@ -1,9 +1,12 @@
 ﻿using Emgu.CV;
 using Emgu.CV.CvEnum;
+using Emgu.CV.Structure;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
+using System.IO;
+using Newtonsoft.Json;
 
 namespace OcrLiteLib
 {
@@ -37,10 +40,58 @@ namespace OcrLiteLib
             }
         }
 
+        //public OcrResult Detect(string img, int padding, int maxSideLen, float boxScoreThresh, float boxThresh,
+        //                      float unClipRatio, bool doAngle, bool mostAngle)
+        //{
+        //    Mat originSrc = CvInvoke.Imread(img, ImreadModes.Color);//default : BGR
+        //    int originMaxSide = Math.Max(originSrc.Cols, originSrc.Rows);
+
+        //    int resize;
+        //    if (maxSideLen <= 0 || maxSideLen > originMaxSide)
+        //    {
+        //        resize = originMaxSide;
+        //    }
+        //    else
+        //    {
+        //        resize = maxSideLen;
+        //    }
+        //    resize += 2 * padding;
+        //    Rectangle paddingRect = new Rectangle(padding, padding, originSrc.Cols, originSrc.Rows);
+        //    Mat paddingSrc = OcrUtils.MakePadding(originSrc, padding);
+
+        //    ScaleParam scale = ScaleParam.GetScaleParam(paddingSrc, resize);
+
+        //    return DetectOnce(paddingSrc, paddingRect, scale, boxScoreThresh, boxThresh, unClipRatio, doAngle, mostAngle);
+        //}
         public OcrResult Detect(string img, int padding, int maxSideLen, float boxScoreThresh, float boxThresh,
-                              float unClipRatio, bool doAngle, bool mostAngle)
+                             float unClipRatio, bool doAngle, bool mostAngle)
         {
             Mat originSrc = CvInvoke.Imread(img, ImreadModes.Color);//default : BGR
+            return Detect(originSrc, padding, maxSideLen, boxScoreThresh, boxThresh, unClipRatio, doAngle, mostAngle);
+        }
+
+        public OcrResult Detect(Bitmap bitmap)
+        {
+            const int padding = 0;
+            const int maxSideLen = 960;
+            const float boxScoreThresh = 0.6f;
+            const float boxThresh = 0.3f;
+            const float unClipRatio = 2.0f;
+            const bool doAngle = true;
+            const bool mostAngle = true;
+            return Detect(bitmap, padding, maxSideLen, boxScoreThresh, boxThresh, unClipRatio, doAngle, mostAngle);
+        }
+
+        public OcrResult Detect(Bitmap bitmap, int padding, int maxSideLen, float boxScoreThresh, float boxThresh,
+                                     float unClipRatio, bool doAngle, bool mostAngle)
+        {
+            Mat originSrc = bitmap.ToImage<Bgr, byte>().Mat;
+            return Detect(originSrc, padding, maxSideLen, boxScoreThresh, boxThresh, unClipRatio, doAngle, mostAngle);
+        }
+
+        public OcrResult Detect(Mat originSrc, int padding, int maxSideLen, float boxScoreThresh, float boxThresh,
+                                      float unClipRatio, bool doAngle, bool mostAngle)
+        {
             int originMaxSide = Math.Max(originSrc.Cols, originSrc.Rows);
 
             int resize;
@@ -149,5 +200,45 @@ namespace OcrLiteLib
             return ocrResult;
         }
 
+        /// <summary>
+        /// 使用Bitmap和JSON配置文件进行OCR检测
+        /// </summary>
+        /// <param name="bitmap">要识别的图片</param>
+        /// <param name="jsonFilePath">包含所有参数的JSON文件路径</param>
+        /// <returns>OcrResult</returns>
+        public OcrResult Detect(Bitmap bitmap, string jsonFilePath)
+        {
+            // 1. 读取JSON文件内容
+            string jsonContent = File.ReadAllText(jsonFilePath);
+
+            // 2. 将JSON反序列化为参数对象
+            OcrParameters parameters = JsonConvert.DeserializeObject<OcrParameters>(jsonContent);
+
+            // 3. 调用现有的、参数最全的Detect方法
+            return Detect(bitmap,
+                parameters.Padding,
+                parameters.MaxSideLen,
+                parameters.BoxScoreThresh,
+                parameters.BoxThresh,
+                parameters.UnClipRatio,
+                parameters.DoAngle,
+                parameters.MostAngle
+            );
+        }
+
+    }
+
+    /// <summary>
+    /// 用于从JSON文件反序列化参数的辅助类
+    /// </summary>
+    public class OcrParameters
+    {
+        public int Padding { get; set; }
+        public int MaxSideLen { get; set; }
+        public float BoxScoreThresh { get; set; }
+        public float BoxThresh { get; set; }
+        public float UnClipRatio { get; set; }
+        public bool DoAngle { get; set; }
+        public bool MostAngle { get; set; }
     }
 }
