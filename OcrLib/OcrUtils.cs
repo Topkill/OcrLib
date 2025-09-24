@@ -6,32 +6,81 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace OcrLiteLib
 {
     class OcrUtils
     {
-        public static Tensor<float> SubstractMeanNormalize(Mat src, float[] meanVals, float[] normVals)
+        // public static Tensor<float> SubstractMeanNormalize(Mat src, float[] meanVals, float[] normVals)
+        // {
+        //     int cols = src.Cols;
+        //     int rows = src.Rows;
+        //     int channels = src.NumberOfChannels;
+        //     Image<Rgb, byte> srcImg = src.ToImage<Rgb, byte>();
+        //     byte[,,] imgData = srcImg.Data;
+        //     Tensor<float> inputTensor = new DenseTensor<float>(new[] { 1, channels, rows, cols });
+        //     for (int r = 0; r < rows; r++)
+        //     {
+        //         for (int c = 0; c < cols; c++)
+        //         {
+        //             for (int ch = 0; ch < channels; ch++)
+        //             {
+        //                 var value = imgData[r, c, ch];
+        //                 float data = (float)(value * normVals[ch] - meanVals[ch] * normVals[ch]);
+        //                 inputTensor[0, ch, r, c] = data;
+        //             }
+        //         }
+        //     }
+        //     return inputTensor;
+        // }
+         public static Tensor<float> SubstractMeanNormalize(Mat src, float[] meanVals, float[] normVals)
         {
             int cols = src.Cols;
             int rows = src.Rows;
             int channels = src.NumberOfChannels;
-            Image<Rgb, byte> srcImg = src.ToImage<Rgb, byte>();
-            byte[,,] imgData = srcImg.Data;
-            Tensor<float> inputTensor = new DenseTensor<float>(new[] { 1, channels, rows, cols });
-            for (int r = 0; r < rows; r++)
+
+            // 预先计算 mean * norm，避免每次循环重复计算
+            float[] meanNorm = new float[channels];
+            for (int i = 0; i < channels; i++)
+                meanNorm[i] = meanVals[i] * normVals[i];
+
+            // 分配 Tensor 数据
+            var data = new float[1 * channels * rows * cols];
+            var tensor = new DenseTensor<float>(data, new[] { 1, channels, rows, cols });
+
+            // 直接获取 Mat 的数据指针
+            unsafe
             {
-                for (int c = 0; c < cols; c++)
+                byte* srcPtr = (byte*)src.DataPointer;
+                int step = src.Step; // 每行字节数
+
+                Parallel.For(0, rows, r =>
                 {
-                    for (int ch = 0; ch < channels; ch++)
+                    byte* rowPtr = srcPtr + r * step;
+                    int rowBaseIndex = r * cols; // 这一行的起始索引（用于 Tensor）
+
+                    for (int c = 0; c < cols; c++)
                     {
-                        var value = imgData[r, c, ch];
-                        float data = (float)(value * normVals[ch] - meanVals[ch] * normVals[ch]);
-                        inputTensor[0, ch, r, c] = data;
+                        int pixelOffset = c * channels;
+
+                        for (int ch = 0; ch < channels; ch++)
+                        {
+                            byte value = rowPtr[pixelOffset + ch];
+                            float dataValue = value * normVals[ch] - meanNorm[ch];
+
+                            // 计算扁平索引，避免多维索引开销
+                            int flatIndex = 0 * (channels * rows * cols)
+                                          + ch * (rows * cols)
+                                          + rowBaseIndex + c;
+
+                            data[flatIndex] = dataValue;
+                        }
                     }
-                }
+                });
             }
-            return inputTensor;
+
+            return tensor;
         }
 
         public static Mat MakePadding(Mat src, int padding)
